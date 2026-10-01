@@ -1,0 +1,39 @@
+---
+# Step 1B — Audit Decision Environments for stale base images (e.g. an AAP 2.4
+# base that breaks under the 2.5/2.6 gateway API). Read-only.
+- name: Audit EDA Decision Environments for stale base images
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    eda_host: "https://aap.example.com"
+    eda_token: "REDACTED"
+    eda_validate_certs: true
+    # Regex of image-URL patterns to flag. platform-24 = an AAP 2.4 base.
+    # Extend with alternation, e.g. "platform-24|some-other-old-base".
+    stale_regex: "platform-24"
+  tasks:
+    - name: List decision environments
+      ansible.builtin.uri:
+        url: "{{ eda_host }}/api/eda/v1/decision-environments/?page_size=200"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ eda_token }}"
+        validate_certs: "{{ eda_validate_certs }}"
+        return_content: true
+      register: de
+
+    - name: Flag DEs on a stale base
+      ansible.builtin.debug:
+        msg: "STALE: {{ item.name }} -> {{ item.image_url }}"
+      loop: "{{ de.json.results | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.image_url is search(stale_regex)
+
+    - name: Full inventory (name -> image)
+      ansible.builtin.debug:
+        msg: "{{ item.name }} -> {{ item.image_url }}"
+      loop: "{{ de.json.results | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
