@@ -1,0 +1,62 @@
+---
+# Step 1 — Is the activation pod running? Flags FailedToRetrieveImagePullSecret.
+# Requires: kubernetes.core collection; KUBECONFIG set (or in-cluster).
+- name: Check EDA activation pod and its pull secret
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ocp_namespace: "eda"            # <-- your activation namespace
+    pod_name_filter: "activation"   # substring that matches activation pods
+  tasks:
+    - name: Get pods in the namespace
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ ocp_namespace }}"
+      register: pods
+
+    - name: Select activation pods
+      ansible.builtin.set_fact:
+        activation_pods: "{{ pods.resources | selectattr('metadata.name', 'search', pod_name_filter) | list }}"
+
+    - name: Summarize phase + pull secrets + waiting reason
+      ansible.builtin.debug:
+        msg:
+          - "pod: {{ item.metadata.name }}"
+          - "phase: {{ item.status.phase | default('unknown') }}"
+          - "imagePullSecrets: {{ item.spec.imagePullSecrets | default([]) | map(attribute='name') | list }}"
+          - "waiting: {{ item.status.containerStatuses | default([]) | map(attribute='state.waiting.reason') | select('defined') | list }}"
+      loop: "{{ activation_pods }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+
+    - name: Check whether each referenced pull secret exists
+      kubernetes.core.k8s_info:
+        kind: Secret
+        namespace: "{{ ocp_namespace }}"
+        name: "{{ secret_name }}"
+      loop: "{{ activation_pods | map(attribute='spec.imagePullSecrets') | map('default', []) | list | flatten | map(attribute='name') | unique | list }}"
+      loop_control:
+        loop_var: secret_name
+      register: secret_check
+
+    - name: Report MISSING pull secrets (this is the FailedToRetrieve cause)
+      ansible.builtin.debug:
+        msg: "MISSING pull secret: {{ item.secret_name }}"
+      loop: "{{ secret_check.results }}"
+      loop_control:
+        label: "{{ item.secret_name }}"
+      when: item.resources | length == 0
+
+    - name: Get recent events
+      kubernetes.core.k8s_info:
+        kind: Event
+        namespace: "{{ ocp_namespace }}"
+      register: events
+
+    - name: Show pull-related events
+      ansible.builtin.debug:
+        msg: "{{ item.reason }}: {{ item.message }}"
+      loop: "{{ events.resources | selectattr('message', 'search', '(?i)pull') | list }}"
+      loop_control:
+        label: "{{ item.reason | default('') }}"

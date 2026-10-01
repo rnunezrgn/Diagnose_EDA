@@ -1,0 +1,36 @@
+---
+# Step 7 — Version check for escalation / patch-note lookup.
+- name: Check EDA component versions via API
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    eda_host: "https://aap.example.com"
+    eda_token: "REDACTED"
+    eda_validate_certs: true
+  tasks:
+    - name: EDA API root
+      ansible.builtin.uri:
+        url: "{{ eda_host }}/api/eda/v1/"
+        headers:
+          Authorization: "Bearer {{ eda_token }}"
+        validate_certs: "{{ eda_validate_certs }}"
+        return_content: true
+      register: eda_api
+      failed_when: false
+
+    - name: Gateway API root
+      ansible.builtin.uri:
+        url: "{{ eda_host }}/api/gateway/v1/"
+        headers:
+          Authorization: "Bearer {{ eda_token }}"
+        validate_certs: "{{ eda_validate_certs }}"
+        return_content: true
+      register: gw_api
+      failed_when: false
+
+    - name: Show API reachability
+      ansible.builtin.debug:
+        msg:
+          - "eda api status: {{ eda_api.status }}"
+          - "gateway api status: {{ gw_api.status }}"

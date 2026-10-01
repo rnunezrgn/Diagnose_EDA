@@ -1,0 +1,60 @@
+---
+# Step 4 — Bisect auth: try bare token, Bearer prefix, and a custom header.
+# Whichever returns 2xx is what the stream expects. Run with forwarding OFF.
+- name: Bisect Event Stream authentication
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    event_stream_url: "https://aap.example.com/eda-event-streams/api/eda/v1/external_event_stream/REPLACE-UUID/post/"
+    token: "REDACTED"
+    custom_header_key: "X-EDA-Token"
+    validate_certs: true
+    test_body:
+      message: "bisect-test"
+    ok_codes: [200, 201, 202, 204, 400, 401, 403]
+  tasks:
+    - name: A) bare token in Authorization
+      ansible.builtin.uri:
+        url: "{{ event_stream_url }}"
+        method: POST
+        headers:
+          Authorization: "{{ token }}"
+        body_format: json
+        body: "{{ test_body }}"
+        validate_certs: "{{ validate_certs }}"
+        status_code: "{{ ok_codes }}"
+      register: r_bare
+      failed_when: false
+
+    - name: B) Bearer prefix
+      ansible.builtin.uri:
+        url: "{{ event_stream_url }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ token }}"
+        body_format: json
+        body: "{{ test_body }}"
+        validate_certs: "{{ validate_certs }}"
+        status_code: "{{ ok_codes }}"
+      register: r_bearer
+      failed_when: false
+
+    - name: C) custom header
+      ansible.builtin.uri:
+        url: "{{ event_stream_url }}"
+        method: POST
+        headers: "{{ {custom_header_key: token} }}"
+        body_format: json
+        body: "{{ test_body }}"
+        validate_certs: "{{ validate_certs }}"
+        status_code: "{{ ok_codes }}"
+      register: r_custom
+      failed_when: false
+
+    - name: Results (winner returned 2xx)
+      ansible.builtin.debug:
+        msg:
+          - "bare   -> {{ r_bare.status }}"
+          - "bearer -> {{ r_bearer.status }}"
+          - "custom -> {{ r_custom.status }}"

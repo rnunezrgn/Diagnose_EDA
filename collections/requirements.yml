@@ -1,0 +1,4 @@
+---
+collections:
+  - name: kubernetes.core      # 01 and 05 (k8s_info, k8s_log)
+  - name: ansible.eda          # 02 (credential, decision_environment, rulebook_activation)

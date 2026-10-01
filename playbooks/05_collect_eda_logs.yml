@@ -1,0 +1,62 @@
+---
+# Step 7 — Collect EDA logs. First play = OpenShift; second = containerized host.
+# Run the play that matches your deployment (tags or --limit).
+- name: Collect EDA logs (OpenShift)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ocp_namespace: "eda"
+    pod_name_filter: "eda"          # widen/narrow as needed (e.g. "activation")
+  tasks:
+    - name: Get EDA / activation pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ ocp_namespace }}"
+      register: pods
+
+    - name: Fetch logs for matching pods
+      kubernetes.core.k8s_log:
+        namespace: "{{ ocp_namespace }}"
+        name: "{{ item.metadata.name }}"
+      loop: "{{ pods.resources | selectattr('metadata.name', 'search', pod_name_filter) | list }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      register: pod_logs
+
+    - name: Show last lines per pod
+      ansible.builtin.debug:
+        msg: "{{ (item.log | default('')).split('\n')[-40:] }}"
+      loop: "{{ pod_logs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.metadata.name | default('') }}"
+
+- name: Collect EDA logs (containerized host)
+  hosts: eda_nodes                  # inventory group for your EDA node(s)
+  gather_facts: false
+  vars:
+    storage_conf: "~/aap/containers/storage.conf"
+    units:
+      - automation-eda-api
+      - automation-eda-activation-worker-1
+      - automation-eda-worker-1
+      - automation-eda-scheduler
+  tasks:
+    - name: journald for EDA systemd user units
+      ansible.builtin.command: "journalctl --user -u {{ item }} --no-pager -n 200"
+      loop: "{{ units }}"
+      changed_when: false
+      failed_when: false
+      register: journal
+
+    - name: List EDA / activation containers (execution-plane context)
+      ansible.builtin.command: podman ps
+      environment:
+        CONTAINERS_STORAGE_CONF: "{{ storage_conf }}"
+      changed_when: false
+      failed_when: false
+      register: cns
+
+    - name: Show container names
+      ansible.builtin.debug:
+        var: cns.stdout_lines
