@@ -13,3 +13,5 @@ The following EDA diagnosys require the following playbook per step:
 . 05_collect_eda_logs.yml (Step 7) — OpenShift pod logs plus containerized journalctl --user and execution-plane podman ps.
 
 . 06_check_versions.yml (Step 7) — EDA + gateway API reachability and the installed automation-eda-controller RPM.
+
+. 07_audit_decision_environments.yml: read-only — lists every EDA Decision Environment via /api/eda/v1/decision-environments/ and flags any whose image_url matches stale_regex
